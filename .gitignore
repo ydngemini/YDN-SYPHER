@@ -28,6 +28,12 @@ product.overrides.json
 .chat-simulation-data
 vscode-telemetry-docs/
 test-output.json
+
+# SYPHER — sensitive / large artifacts
+.env
+.sypher_env/
+.sypher/models/
+.sypher/ui_events.jsonl
 test/componentFixtures/.screenshots/*
 !test/componentFixtures/.screenshots/baseline/
 dist

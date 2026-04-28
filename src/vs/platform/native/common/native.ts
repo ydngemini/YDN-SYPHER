@@ -285,6 +285,10 @@ export interface ICommonNativeHostService {
 	startPowerSaveBlocker(type: PowerSaveBlockerType): Promise<number>;
 	stopPowerSaveBlocker(id: number): Promise<boolean>;
 	isPowerSaveBlockerStarted(id: number): Promise<boolean>;
+
+	// SYPHER DMI
+	sypherHardwareProbe(pythonScriptPath: string): Promise<string>;
+	sypherExecSkill(pythonExec: string, scriptPath: string, argsJson: string): Promise<string>;
 }
 
 /**

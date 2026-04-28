@@ -1,7 +1,7 @@
 {
-	"nameShort": "Code - OSS",
-	"nameLong": "Code - OSS",
-	"applicationName": "code-oss",
+	"nameShort": "YDN SYPHER",
+	"nameLong": "YDN SYPHER",
+	"applicationName": "ydn-sypher",
 	"dataFolderName": ".vscode-oss",
 	"sharedDataFolderName": ".vscode-oss-shared",
 	"win32MutexName": "vscodeoss",

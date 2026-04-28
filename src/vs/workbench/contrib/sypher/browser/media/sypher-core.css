@@ -1,0 +1,372 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/* -- Palette variables --------------------------------------------------- */
+:root {
+	--sypher-bg:          #0d0505;
+	--sypher-surface:     #160808;
+	--sypher-border:      #1a0808;
+	--sypher-neon:        #ff2244;
+	--sypher-neon-dim:    rgba(255, 34, 68, 0.18);
+	--sypher-neon-glow:   0 0 4px #ff2244, 0 0 12px rgba(255, 34, 68, 0.5);
+	--sypher-cyan:        #ff6688;
+	--sypher-cyan-glow:   0 0 4px #ff6688, 0 0 14px rgba(255, 102, 136, 0.45);
+	--sypher-text:        #ffd4d8;
+	--sypher-text-dim:    #7a4450;
+	--sypher-gold:        #ffcc00;
+	--sypher-gold-glow:   0 0 6px #ffcc00, 0 0 18px rgba(255, 204, 0, 0.6);
+}
+
+/* -- Boot animation ------------------------------------------------------ */
+@keyframes sypher-boot-scan {
+	0%   { opacity: 0; clip-path: inset(0 0 100% 0); }
+	40%  { opacity: 1; clip-path: inset(0 0 0% 0); }
+	60%  { opacity: 1; }
+	80%  { opacity: 0.92; }
+	100% { opacity: 1; clip-path: inset(0 0 0% 0); }
+}
+
+@keyframes sypher-border-pulse {
+	0%,100% { box-shadow: var(--sypher-neon-glow); }
+	50%      { box-shadow: 0 0 2px #ff2244, 0 0 6px rgba(255, 34, 68, 0.2); }
+}
+
+@keyframes sypher-hud-flicker {
+	0%,100% { opacity: 1; }
+	92%     { opacity: 1; }
+	93%     { opacity: 0.6; }
+	94%     { opacity: 1; }
+	97%     { opacity: 0.85; }
+	98%     { opacity: 1; }
+}
+
+/* God-Mode: pulsing gold/white glow when GPT-5.5 or forced-vision is active */
+@keyframes sypher-godmode-pulse {
+	0%,100% { box-shadow: var(--sypher-gold-glow); border-color: var(--sypher-gold); }
+	50%     { box-shadow: 0 0 2px #ffcc00, 0 0 8px rgba(255, 204, 0, 0.3); }
+}
+
+/* Fast-Mode: rapid neon pulse when Qwen/DeepSeek/Mistral is auto-selected */
+@keyframes sypher-fast-pulse {
+	0%,100% { box-shadow: var(--sypher-neon-glow); }
+	25%     { box-shadow: 0 0 8px #ff2244, 0 0 24px rgba(255, 34, 68, 0.7); }
+	50%     { box-shadow: 0 0 2px #ff2244, 0 0 6px rgba(255, 34, 68, 0.2); }
+	75%     { box-shadow: 0 0 8px #ff2244, 0 0 24px rgba(255, 34, 68, 0.7); }
+}
+
+.monaco-workbench.sypher-active {
+	animation: sypher-boot-scan 0.55s cubic-bezier(0.16, 1, 0.3, 1) both,
+	           sypher-hud-flicker 8s 1s infinite;
+}
+
+/* Applied dynamically by chassis_notification - god-tier preset (GPT-5.5, vision) */
+.monaco-workbench.sypher-godmode .part.titlebar {
+	border-bottom-color: var(--sypher-gold) !important;
+	box-shadow: var(--sypher-gold-glow) !important;
+	animation: sypher-godmode-pulse 2s ease-in-out infinite !important;
+}
+
+/* Applied dynamically by chassis_notification - fast-tier preset (Qwen, Mistral) */
+.monaco-workbench.sypher-fast-pulse .part.panel,
+.monaco-workbench.sypher-fast-pulse .part.titlebar {
+	animation: sypher-fast-pulse 0.8s ease-in-out 3 !important;
+}
+
+/* -- Base chrome --------------------------------------------------------- */
+.monaco-workbench,
+body {
+	background: var(--sypher-bg) !important;
+	color: var(--sypher-text) !important;
+}
+
+/* kill all rounded corners */
+*,
+*::before,
+*::after {
+	border-radius: 0 !important;
+}
+
+/* -- Activity bar - hidden ----------------------------------------------- */
+.part.activitybar {
+	display: none !important;
+}
+
+/* compensate: sidebar slides flush left */
+.part.sidebar {
+	border-left: none !important;
+}
+
+/* -- Title bar ----------------------------------------------------------- */
+.part.titlebar {
+	background: var(--sypher-surface) !important;
+	border-bottom: 1px solid var(--sypher-neon) !important;
+	box-shadow: var(--sypher-neon-glow) !important;
+}
+
+/* -- Editor area --------------------------------------------------------- */
+.editor-group-container {
+	background: var(--sypher-bg) !important;
+}
+
+.editor-group-container .editor-container {
+	border: 1px solid var(--sypher-border) !important;
+}
+
+.editor-group-container.active {
+	border: 1px solid var(--sypher-neon) !important;
+	box-shadow: inset 0 0 0 1px var(--sypher-neon-dim) !important;
+}
+
+/* tab bar */
+.tabs-container {
+	background: var(--sypher-surface) !important;
+	border-bottom: 1px solid var(--sypher-neon) !important;
+}
+
+.tab.active {
+	border-top: 2px solid var(--sypher-neon) !important;
+	background: var(--sypher-bg) !important;
+	color: var(--sypher-neon) !important;
+}
+
+.tab:not(.active) {
+	color: var(--sypher-text-dim) !important;
+	border-top: 2px solid transparent !important;
+}
+
+/* -- Panel / Terminal - neon trace borders ------------------------------- */
+.part.panel {
+	background: var(--sypher-surface) !important;
+	border-top: 1px solid var(--sypher-neon) !important;
+	box-shadow: var(--sypher-neon-glow) !important;
+	animation: sypher-border-pulse 3s ease-in-out infinite;
+}
+
+.panel-section-header {
+	background: var(--sypher-surface) !important;
+	border-bottom: 1px solid var(--sypher-neon-dim) !important;
+	color: var(--sypher-neon) !important;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	font-size: 10px;
+}
+
+/* terminal pane */
+.terminal-widget-overlay,
+.terminal.xterm {
+	background: var(--sypher-bg) !important;
+}
+
+.xterm-viewport {
+	background: var(--sypher-bg) !important;
+}
+
+/* -- Sidebar ------------------------------------------------------------- */
+.part.sidebar {
+	background: var(--sypher-surface) !important;
+	border-right: 1px solid var(--sypher-neon) !important;
+	box-shadow: var(--sypher-neon-glow) !important;
+}
+
+.sidebar .title {
+	background: var(--sypher-surface) !important;
+	color: var(--sypher-neon) !important;
+	border-bottom: 1px solid var(--sypher-neon-dim) !important;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	font-size: 10px;
+}
+
+/* explorer tree */
+.monaco-list-row:hover {
+	background: var(--sypher-neon-dim) !important;
+}
+
+.monaco-list-row.selected,
+.monaco-list-row.focused {
+	background: rgba(255, 34, 68, 0.1) !important;
+	border-left: 2px solid var(--sypher-neon) !important;
+	color: var(--sypher-neon) !important;
+}
+
+/* -- Status bar ---------------------------------------------------------- */
+.part.statusbar {
+	background: var(--sypher-surface) !important;
+	border-top: 1px solid var(--sypher-neon) !important;
+	box-shadow: var(--sypher-neon-glow) !important;
+	color: var(--sypher-neon) !important;
+}
+
+.statusbar-item {
+	color: var(--sypher-neon) !important;
+}
+
+.statusbar-item:hover {
+	background: var(--sypher-neon-dim) !important;
+}
+
+/* -- Scrollbars ---------------------------------------------------------- */
+.monaco-scrollable-element > .scrollbar > .slider {
+	background: var(--sypher-neon-dim) !important;
+}
+
+.monaco-scrollable-element > .scrollbar > .slider:hover {
+	background: rgba(255, 34, 68, 0.4) !important;
+}
+
+/* -- Input / quick open -------------------------------------------------- */
+.quick-input-widget {
+	background: var(--sypher-surface) !important;
+	border: 1px solid var(--sypher-neon) !important;
+	box-shadow: var(--sypher-neon-glow) !important;
+}
+
+.quick-input-box input {
+	background: var(--sypher-bg) !important;
+	color: var(--sypher-text) !important;
+	border: 1px solid var(--sypher-neon-dim) !important;
+	caret-color: var(--sypher-neon) !important;
+}
+
+.quick-input-list .monaco-list-row.focused,
+.quick-input-list .monaco-list-row:hover {
+	background: var(--sypher-neon-dim) !important;
+	color: var(--sypher-neon) !important;
+}
+
+/* -- Notifications ------------------------------------------------------- */
+.notifications-toasts .monaco-toast-notification {
+	background: var(--sypher-surface) !important;
+	border: 1px solid var(--sypher-neon) !important;
+	box-shadow: var(--sypher-neon-glow) !important;
+	color: var(--sypher-text) !important;
+}
+
+/* -- Minimap ------------------------------------------------------------- */
+.minimap {
+	border-left: 1px solid var(--sypher-neon-dim) !important;
+}
+
+/* -- SYPHER HUD - floating right overlay ------------------------------------- */
+.sypher-hud-root {
+	position: fixed;
+	top: 48px;
+	right: 0;
+	width: 272px;
+	height: calc(100vh - 68px);
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 6px 6px 6px 0;
+	z-index: 50;
+	pointer-events: none;
+}
+
+/* Shared section chrome - glassmorphism */
+.sypher-hud-section {
+	pointer-events: all;
+	display: flex;
+	flex-direction: column;
+	background: rgba(13, 5, 5, 0.82);
+	backdrop-filter: blur(14px) saturate(1.8);
+	-webkit-backdrop-filter: blur(14px) saturate(1.8);
+	border: 1px solid var(--sypher-neon);
+	border-right: none;
+	box-shadow: var(--sypher-neon-glow), inset 0 0 24px rgba(255, 34, 68, 0.04);
+}
+
+.sypher-hud-header {
+	padding: 3px 8px;
+	font: 700 8px/1.6 monospace;
+	letter-spacing: 0.18em;
+	text-transform: uppercase;
+	color: var(--sypher-neon);
+	border-bottom: 1px solid var(--sypher-neon-dim);
+	flex-shrink: 0;
+}
+
+/* Task manifest section */
+.sypher-task-list {
+	flex: 0 0 auto;
+	max-height: 220px;
+}
+
+.sypher-task-items {
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+}
+
+.sypher-task-items::-webkit-scrollbar { width: 3px; }
+.sypher-task-items::-webkit-scrollbar-track { background: transparent; }
+.sypher-task-items::-webkit-scrollbar-thumb { background: var(--sypher-neon-dim); }
+
+/* Task items */
+.sypher-task-item {
+	display: flex;
+	gap: 5px;
+	align-items: baseline;
+	padding: 3px 8px;
+	font: 9px/1.5 monospace;
+	border-bottom: 1px solid rgba(255, 34, 68, 0.08);
+	transition: background 0.3s;
+}
+
+.sypher-task-dot { flex-shrink: 0; width: 10px; text-align: center; }
+.sypher-task-num { flex-shrink: 0; opacity: 0.45; color: var(--sypher-text-dim); }
+.sypher-task-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.sypher-task-output {
+	font: 8px/1.4 monospace;
+	opacity: 0.65;
+	margin-top: 1px;
+	padding-left: 15px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* Status colours */
+.sypher-task-item.pending { color: var(--sypher-text-dim); }
+.sypher-task-item.running { color: var(--sypher-neon); animation: sypher-task-pulse 1.4s ease-in-out infinite; }
+.sypher-task-item.done    { color: #44ff88; animation: sypher-task-done-flash 1.2s ease-out forwards; }
+.sypher-task-item.failed  { color: #ff4444; animation: sypher-task-fail-flash 1.2s ease-out forwards; }
+
+@keyframes sypher-task-pulse {
+	0%,100% { opacity: 1; }
+	50%      { opacity: 0.45; }
+}
+
+@keyframes sypher-task-done-flash {
+	0%   { background: rgba(68, 255, 136, 0.28); }
+	100% { background: transparent; }
+}
+
+@keyframes sypher-task-fail-flash {
+	0%   { background: rgba(255, 68, 68, 0.28); }
+	100% { background: transparent; }
+}
+
+/* Forge preview section */
+.sypher-forge-panel {
+	flex: 1;
+	min-height: 0;
+}
+
+.sypher-forge-host {
+	flex: 1;
+	position: relative;
+	overflow: hidden;
+	min-height: 0;
+}
+
+.sypher-forge-host iframe,
+.sypher-forge-host webview {
+	position: absolute !important;
+	inset: 0 !important;
+	width: 100% !important;
+	height: 100% !important;
+	border: none !important;
+}

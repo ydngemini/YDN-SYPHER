@@ -196,6 +196,9 @@ import './contrib/policyExport/electron-browser/policyExport.contribution.js';
 // Keybindings Export
 import './contrib/keybindingsExport/electron-browser/keybindingsExport.contribution.js';
 
+// SYPHER DMI — hardware probe (desktop only)
+import './contrib/sypher/electron-browser/sypherProbe.contribution.js';
+
 //#endregion
 
 

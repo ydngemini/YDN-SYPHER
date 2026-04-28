@@ -1074,6 +1074,18 @@
 		"--vscode-cornerRadius-small",
 		"--vscode-cornerRadius-xLarge",
 		"--vscode-cornerRadius-xSmall",
-		"--vscode-strokeThickness"
+		"--vscode-strokeThickness",
+		"--sypher-bg",
+		"--sypher-surface",
+		"--sypher-border",
+		"--sypher-neon",
+		"--sypher-neon-dim",
+		"--sypher-neon-glow",
+		"--sypher-cyan",
+		"--sypher-cyan-glow",
+		"--sypher-text",
+		"--sypher-text-dim",
+		"--sypher-gold",
+		"--sypher-gold-glow"
 	]
 }

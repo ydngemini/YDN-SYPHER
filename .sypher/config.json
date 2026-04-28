@@ -1,0 +1,27 @@
+{
+  "default_model": "huggingface/Qwen/Qwen2.5-Coder-32B-Instruct",
+  "python_exec": ".sypher_env/bin/python",
+  "max_iterations": 12,
+  "ui_events_file": ".sypher/ui_events.jsonl",
+  "providers": {
+    "huggingface": {
+      "api_base": "https://api-inference.huggingface.co/v1",
+      "api_key_env": "HF_TOKEN"
+    },
+    "kimi": {
+      "api_base": "https://api.moonshot.cn/v1",
+      "api_key_env": "KIMI_API_KEY",
+      "default_model": "moonshot-v1-8k"
+    },
+    "qwen": {
+      "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "api_key_env": "DASHSCOPE_API_KEY",
+      "default_model": "qwen-coder-turbo"
+    },
+    "custom": {
+      "api_base": "http://localhost:11434/v1",
+      "api_key_env": "CUSTOM_API_KEY",
+      "default_model": "llama3"
+    }
+  }
+}

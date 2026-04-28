@@ -458,4 +458,7 @@ import './contrib/editTelemetry/browser/editTelemetry.contribution.js';
 // Opener
 import './contrib/opener/browser/opener.contribution.js';
 
+// SYPHER Bus
+import './contrib/sypher/browser/sypherBus.contribution.js';
+
 //#endregion

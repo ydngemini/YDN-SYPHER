@@ -70,6 +70,9 @@ export const unicodeFilter = Object.freeze<string[]>([
 	'!src/vs/base/browser/dompurify/**',
 	'!src/vs/workbench/services/keybinding/browser/keyboardLayouts/**',
 	'!src/vs/workbench/contrib/terminal/common/scripts/psreadline/**',
+
+	// SYPHER -- intentional unicode glyphs in HUD overlay and log messages
+	'!src/vs/workbench/contrib/sypher/**',
 ]);
 
 export const indentationFilter = Object.freeze<string[]>([
@@ -132,6 +135,9 @@ export const indentationFilter = Object.freeze<string[]>([
 
 	// extensions/copilot has its own code style
 	'!extensions/copilot/**',
+
+	// SYPHER -- embedded Python/HTML/JS template literals use space indentation intentionally
+	'!src/vs/workbench/contrib/sypher/**',
 
 	// except specific file types
 	'!src/vs/*/**/*.d.ts',

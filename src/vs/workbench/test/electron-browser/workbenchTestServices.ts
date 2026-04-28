@@ -200,6 +200,8 @@ export class TestNativeHostService implements INativeHostService {
 	async startPowerSaveBlocker(type: PowerSaveBlockerType): Promise<number> { return -1; }
 	async stopPowerSaveBlocker(id: number): Promise<boolean> { return false; }
 	async isPowerSaveBlockerStarted(id: number): Promise<boolean> { return false; }
+	async sypherHardwareProbe(_pythonScriptPath: string): Promise<string> { return '{}'; }
+	async sypherExecSkill(_pythonExec: string, _scriptPath: string, _argsJson: string): Promise<string> { return '{}'; }
 }
 
 export class TestExtensionTipsService extends AbstractNativeExtensionTipsService {

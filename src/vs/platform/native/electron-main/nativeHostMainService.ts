@@ -1340,6 +1340,24 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
 
 	//#endregion
 
+	// SYPHER DMI — runs system_probe.py via the global python3
+	async sypherHardwareProbe(windowId: number | undefined, pythonScriptPath: string): Promise<string> {
+		const { stdout } = await promisify(exec)(`python3 "${pythonScriptPath}"`, { timeout: 8000 });
+		return stdout.trim();
+	}
+
+	// SYPHER DMI — generic venv-aware skill runner
+	// pythonExec: absolute path to .sypher_env/bin/python (or fallback "python3")
+	// argsJson:   JSON array of extra CLI args passed after scriptPath
+	async sypherExecSkill(windowId: number | undefined, pythonExec: string, scriptPath: string, argsJson: string): Promise<string> {
+		let extraArgs: string[] = [];
+		try { extraArgs = JSON.parse(argsJson); } catch { /* use empty */ }
+		const quotedArgs = extraArgs.map(a => `"${a.replace(/"/g, '\\"')}"`).join(' ');
+		const cmd = `"${pythonExec}" "${scriptPath}" ${quotedArgs}`.trimEnd();
+		const { stdout } = await promisify(exec)(cmd, { timeout: 60_000 });
+		return stdout.trim();
+	}
+
 	private windowById(windowId: number | undefined, fallbackCodeWindowId?: number): ICodeWindow | IAuxiliaryWindow | undefined {
 		return this.codeWindowById(windowId) ?? this.auxiliaryWindowById(windowId) ?? this.codeWindowById(fallbackCodeWindowId);
 	}
