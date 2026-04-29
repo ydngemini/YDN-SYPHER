@@ -6,16 +6,17 @@
 import './media/sypher-core.css';
 
 import { VSBuffer } from '../../../../base/common/buffer.js';
-import { Disposable } from '../../../../base/common/lifecycle.js';
+import { Disposable, toDisposable } from '../../../../base/common/lifecycle.js';
 import { URI } from '../../../../base/common/uri.js';
 import { localize } from '../../../../nls.js';
 import { Action2, registerAction2 } from '../../../../platform/actions/common/actions.js';
 import { ICommandService } from '../../../../platform/commands/common/commands.js';
 import { IFileService } from '../../../../platform/files/common/files.js';
-import { ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
+import { IInstantiationService, ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
 import { KeybindingWeight } from '../../../../platform/keybinding/common/keybindingsRegistry.js';
 import { ILogService } from '../../../../platform/log/common/log.js';
+import { INativeHostService } from '../../../../platform/native/common/native.js';
 import { INotificationService, Severity } from '../../../../platform/notification/common/notification.js';
 import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
 import { KeyCode, KeyMod } from '../../../../base/common/keyCodes.js';
@@ -36,6 +37,8 @@ import {
 const SYPHER_DIR = '.sypher';
 const SKILLS_DIR = 'skills';
 const UI_EVENTS_FILE = '.sypher/ui_events.jsonl';
+const THERMAL_MONITOR_FILE = '.sypher/skills/thermal_monitor.py';
+const VENV_PYTHON = '.sypher_env/bin/python';
 
 const SYSTEM_PROBE_PY = `#!/usr/bin/env python3
 """system_probe.py - SYPHER skill. Outputs minified JSON hardware report."""
@@ -91,6 +94,11 @@ export class SypherBusContribution extends Disposable implements IWorkbenchContr
 	static readonly ID = 'workbench.contrib.sypherBus';
 
 	private _uiEventsOffset = 0;
+	private _thermalPollHandle: number | undefined;
+	private _webResearchIndicatorEl: HTMLElement | undefined;
+	private _thermalIndicatorEl: HTMLElement | undefined;
+	private _thermalOverrideActive = false;
+	private _thermalPreviousPreset: string | undefined;
 
 	constructor(
 		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,
@@ -98,12 +106,15 @@ export class SypherBusContribution extends Disposable implements IWorkbenchContr
 		@ILogService private readonly logService: ILogService,
 		@INotificationService private readonly notificationService: INotificationService,
 		@ICommandService private readonly commandService: ICommandService,
+		@IInstantiationService private readonly instantiationService: IInstantiationService,
 		@ISypherHudService private readonly hudService: ISypherHudService,
 	) {
 		super();
 		this.activateHud();
+		this.ensureStatusIndicators();
 		this.initializeSypherDirectory();
 		this.watchUiEvents();
+		this.startThermalHeartbeat();
 	}
 
 	/** Fire the boot animation on the root workbench node. */
@@ -204,6 +215,243 @@ export class SypherBusContribution extends Disposable implements IWorkbenchContr
 		this.logService.info(`[SypherBus] Watching UI events at ${eventsUri.fsPath}`);
 	}
 
+	private ensureStatusIndicators(): void {
+		const statusbar = document.querySelector<HTMLElement>('.part.statusbar');
+		if (!statusbar) {
+			return;
+		}
+
+		let host = statusbar.querySelector<HTMLElement>('.sypher-status-signals');
+		if (!host) {
+			host = document.createElement('div');
+			host.className = 'sypher-status-signals';
+			statusbar.appendChild(host);
+		}
+
+		if (!this._webResearchIndicatorEl) {
+			this._webResearchIndicatorEl = document.createElement('div');
+			this._webResearchIndicatorEl.className = 'sypher-web-thinking';
+			this._webResearchIndicatorEl.textContent = 'WEAVER IS SEARCHING THE WEB...';
+			host.appendChild(this._webResearchIndicatorEl);
+		}
+
+		if (!this._thermalIndicatorEl) {
+			this._thermalIndicatorEl = document.createElement('div');
+			this._thermalIndicatorEl.className = 'sypher-thermal-readout';
+			this._thermalIndicatorEl.textContent = 'CPU --.-°C';
+			host.appendChild(this._thermalIndicatorEl);
+		}
+	}
+
+	private setWebResearchIndicator(active: boolean, message: string): void {
+		this.ensureStatusIndicators();
+		if (!this._webResearchIndicatorEl) {
+			return;
+		}
+
+		this._webResearchIndicatorEl.textContent = message;
+		this._webResearchIndicatorEl.classList.toggle('active', active);
+	}
+
+	private setThermalIndicator(tempC: number, status: string): void {
+		this.ensureStatusIndicators();
+		if (!this._thermalIndicatorEl) {
+			return;
+		}
+
+		const label = Number.isFinite(tempC)
+			? `CPU ${tempC.toFixed(1)}°C ${status}`
+			: `CPU --.-°C ${status}`;
+		this._thermalIndicatorEl.textContent = label;
+		this._thermalIndicatorEl.classList.remove('optimal', 'warm', 'critical');
+
+		switch (status) {
+			case 'OPTIMAL':
+				this._thermalIndicatorEl.classList.add('optimal');
+				break;
+			case 'WARM':
+				this._thermalIndicatorEl.classList.add('warm');
+				break;
+			case 'CRITICAL':
+				this._thermalIndicatorEl.classList.add('critical');
+				break;
+		}
+	}
+
+	private applyThermalClass(status: string): void {
+		const workbench = document.querySelector<HTMLElement>('.monaco-workbench');
+		if (!workbench) {
+			return;
+		}
+
+		workbench.classList.remove('thermal-optimal', 'thermal-warm', 'thermal-critical');
+		switch (status) {
+			case 'OPTIMAL':
+				workbench.classList.add('thermal-optimal');
+				break;
+			case 'WARM':
+				workbench.classList.add('thermal-warm');
+				break;
+			case 'CRITICAL':
+				workbench.classList.add('thermal-critical');
+				break;
+		}
+	}
+
+	private getNativeHostService(): INativeHostService | undefined {
+		try {
+			return this.instantiationService.invokeFunction(accessor => accessor.get(INativeHostService));
+		} catch {
+			return undefined;
+		}
+	}
+
+	private startThermalHeartbeat(): void {
+		const nativeHostService = this.getNativeHostService();
+		if (!nativeHostService) {
+			this.logService.trace('[SypherBus] Native host unavailable; thermal heartbeat disabled');
+			return;
+		}
+
+		void this.pollThermalHeartbeat(nativeHostService);
+		this._thermalPollHandle = window.setInterval(() => {
+			void this.pollThermalHeartbeat(nativeHostService);
+		}, 5000);
+
+		this._register(toDisposable(() => {
+			if (this._thermalPollHandle !== undefined) {
+				window.clearInterval(this._thermalPollHandle);
+				this._thermalPollHandle = undefined;
+			}
+		}));
+	}
+
+	private async pollThermalHeartbeat(nativeHostService: INativeHostService): Promise<void> {
+		const folders = this.workspaceContextService.getWorkspace().folders;
+		if (folders.length === 0) {
+			return;
+		}
+
+		const workspaceRoot = folders[0].uri;
+		const scriptPath = URI.joinPath(workspaceRoot, ...THERMAL_MONITOR_FILE.split('/')).fsPath;
+		const venvPython = URI.joinPath(workspaceRoot, ...VENV_PYTHON.split('/')).fsPath;
+
+		let raw = '';
+		try {
+			raw = await nativeHostService.sypherExecSkill(venvPython, scriptPath, '[]');
+		} catch {
+			raw = await nativeHostService.sypherExecSkill('python3', scriptPath, '[]');
+		}
+
+		let report: { ok?: boolean; temp_c?: number; status?: string; error?: string };
+		try {
+			report = JSON.parse(raw);
+		} catch {
+			this.logService.warn(`[SypherBus] Thermal monitor returned invalid JSON: ${raw}`);
+			return;
+		}
+
+		if (!report.ok) {
+			this.logService.warn(`[SypherBus] Thermal monitor error: ${report.error ?? 'unknown error'}`);
+			return;
+		}
+
+		const tempC = Number(report.temp_c ?? NaN);
+		const status = String(report.status ?? 'UNKNOWN').toUpperCase();
+		this.setThermalIndicator(tempC, status);
+		this.applyThermalClass(status);
+
+		if (status === 'CRITICAL') {
+			await this.applyThermalChassisMutation();
+			return;
+		}
+
+		if (this._thermalOverrideActive && Number.isFinite(tempC) && tempC < 75) {
+			await this.restoreThermalChassisMutation();
+		}
+	}
+
+	private async readConfig(): Promise<{ config: any; configUri: URI } | undefined> {
+		const folders = this.workspaceContextService.getWorkspace().folders;
+		if (folders.length === 0) {
+			return undefined;
+		}
+
+		const configUri = URI.joinPath(folders[0].uri, '.sypher', 'config.json');
+		if (!await this.fileService.exists(configUri)) {
+			return undefined;
+		}
+
+		const file = await this.fileService.readFile(configUri);
+		return {
+			config: JSON.parse(file.value.toString()),
+			configUri,
+		};
+	}
+
+	private async applyThermalChassisMutation(): Promise<void> {
+		const payload = await this.readConfig();
+		if (!payload) {
+			return;
+		}
+
+		const { config, configUri } = payload;
+		const current = String(config.active_preset ?? '');
+
+		if (!this._thermalOverrideActive) {
+			this._thermalPreviousPreset = current && current !== 'LIGHTSPEED' ? current : undefined;
+		}
+
+		this._thermalOverrideActive = true;
+		if (current === 'LIGHTSPEED') {
+			return;
+		}
+
+		config.active_preset = 'LIGHTSPEED';
+		await this.fileService.writeFile(configUri, VSBuffer.fromString(JSON.stringify(config, null, 2)));
+
+		this.notificationService.notify({
+			severity: Severity.Warning,
+			message: localize(
+				'sypher.thermalThrottle',
+				"THERMAL GUARD: LIGHTSPEED ENGAGED (Phi-4) until CPU drops below 75°C",
+			),
+		});
+	}
+
+	private async restoreThermalChassisMutation(): Promise<void> {
+		const previous = this._thermalPreviousPreset;
+		this._thermalOverrideActive = false;
+		this._thermalPreviousPreset = undefined;
+
+		if (!previous) {
+			return;
+		}
+
+		const payload = await this.readConfig();
+		if (!payload) {
+			return;
+		}
+
+		const { config, configUri } = payload;
+		const current = String(config.active_preset ?? '');
+		if (current !== 'LIGHTSPEED') {
+			return;
+		}
+
+		config.active_preset = previous;
+		await this.fileService.writeFile(configUri, VSBuffer.fromString(JSON.stringify(config, null, 2)));
+
+		this.notificationService.notify({
+			severity: Severity.Info,
+			message: localize(
+				'sypher.thermalRecovered',
+				"THERMAL GUARD CLEARED: Restored previous preset {0}",
+				previous,
+			),
+		});
+	}
+
 	private async applyUiMutation(event: {
 		action: string;
 		// color_shift
@@ -226,6 +474,8 @@ export class SypherBusContribution extends Disposable implements IWorkbenchContr
 		name?: string;
 		// planner_active
 		active?: boolean;
+		// web_research_state
+		research_message?: string;
 	}): Promise<void> {
 		this.logService.info(`[SypherBus] UI mutation: ${JSON.stringify(event)}`);
 
@@ -282,6 +532,12 @@ export class SypherBusContribution extends Disposable implements IWorkbenchContr
 				break;
 			case 'planner_active':
 				this.hudService.setPlannerActive(event.active ?? false);
+				break;
+			case 'web_research_state':
+				this.setWebResearchIndicator(
+					event.active ?? false,
+					event.research_message ?? event.message ?? 'WEAVER IS SEARCHING THE WEB...',
+				);
 				break;
 			case 'maximize_terminal':
 				await this.commandService.executeCommand('workbench.action.maximizePanel');

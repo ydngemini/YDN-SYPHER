@@ -197,6 +197,7 @@ body {
 	border-top: 1px solid var(--sypher-neon) !important;
 	box-shadow: var(--sypher-neon-glow) !important;
 	color: var(--sypher-neon) !important;
+	position: relative;
 }
 
 .statusbar-item {
@@ -205,6 +206,89 @@ body {
 
 .statusbar-item:hover {
 	background: var(--sypher-neon-dim) !important;
+}
+
+/* -- SYPHER status signal strip (bottom-right) ---------------------------- */
+.sypher-status-signals {
+	position: absolute;
+	right: 10px;
+	bottom: 2px;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	pointer-events: none;
+	font-family: monospace;
+	z-index: 3;
+}
+
+.sypher-web-thinking {
+	opacity: 0;
+	transform: translateY(2px);
+	transition: opacity 120ms ease, transform 120ms ease;
+	font-size: 10px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: #ffcc00;
+	text-shadow: 0 0 6px rgba(255, 204, 0, 0.65);
+}
+
+.sypher-web-thinking.active {
+	opacity: 1;
+	transform: translateY(0);
+	animation: sypher-task-pulse 1.2s ease-in-out infinite;
+}
+
+.sypher-thermal-readout {
+	font-size: 10px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	padding: 1px 6px;
+	border: 1px solid rgba(255, 34, 68, 0.32);
+	background: rgba(13, 5, 5, 0.55);
+	box-shadow: inset 0 0 8px rgba(255, 34, 68, 0.15);
+	color: var(--sypher-text);
+}
+
+.sypher-thermal-readout.optimal {
+	color: #44ff88;
+	border-color: rgba(68, 255, 136, 0.4);
+	box-shadow: inset 0 0 10px rgba(68, 255, 136, 0.18);
+}
+
+.sypher-thermal-readout.warm {
+	color: #ffcc00;
+	border-color: rgba(255, 204, 0, 0.42);
+	box-shadow: inset 0 0 10px rgba(255, 204, 0, 0.16);
+}
+
+.sypher-thermal-readout.critical {
+	color: #ff4444;
+	border-color: rgba(255, 68, 68, 0.5);
+	box-shadow: inset 0 0 12px rgba(255, 68, 68, 0.3), 0 0 10px rgba(255, 68, 68, 0.25);
+	animation: sypher-task-pulse 0.9s ease-in-out infinite;
+}
+
+/* -- Thermal global states ------------------------------------------------ */
+.monaco-workbench.thermal-critical::after {
+	content: '';
+	position: fixed;
+	inset: 0;
+	pointer-events: none;
+	background: radial-gradient(circle at center,
+		rgba(255, 0, 0, 0) 42%,
+		rgba(120, 0, 0, 0.24) 68%,
+		rgba(90, 0, 0, 0.4) 100%);
+	z-index: 999;
+	animation: sypher-critical-vignette 1.2s ease-in-out infinite;
+}
+
+.monaco-workbench.thermal-warm .part.titlebar {
+	box-shadow: 0 0 4px rgba(255, 204, 0, 0.45), 0 0 14px rgba(255, 204, 0, 0.22) !important;
+}
+
+@keyframes sypher-critical-vignette {
+	0%, 100% { opacity: 0.85; }
+	50% { opacity: 1; }
 }
 
 /* -- Scrollbars ---------------------------------------------------------- */

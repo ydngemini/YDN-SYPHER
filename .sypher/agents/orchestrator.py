@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""orchestrator.py — SYPHER ReAct Agent Loop with self-healing build escalation.
+"""orchestrator.py — SYPHER ReAct loop with autonomous web-backed self-heal.
 
 Receives a user prompt, runs a Reasoning + Acting loop, and autonomously
 calls filesystem, shell, web, and UI tools until the task is done.
 
-Self-healing: when run_terminal returns a non-zero exit code, the orchestrator
-automatically escalates the next LLM call to GPT_5_5_ULTRA (god-tier reasoning)
-to analyse the error and write a fix — no user input required.
+Self-healing: when run_terminal fails, the orchestrator escalates to
+GPT_5_5_ULTRA and automatically runs web research on the error signal so the
+repair turn is grounded in fresh documentation without user input.
 
 Usage:
   .sypher_env/bin/python .sypher/agents/orchestrator.py \\
@@ -57,12 +57,34 @@ _BUILD_ERROR_SIGNALS = (
 
 
 def _is_build_error(result: dict) -> bool:
-    if result.get("exit_code", 0) != 0:
+    if result.get("exit_code", result.get("returncode", 0)) != 0:
         return True
     combined = (
         result.get("stderr", "") + result.get("stdout", "")
     ).lower()
     return any(sig in combined for sig in _BUILD_ERROR_SIGNALS)
+
+
+def _extract_error_query(result: dict) -> str:
+    stderr = str(result.get("stderr", "") or "").strip()
+    stdout = str(result.get("stdout", "") or "").strip()
+    cmd = str(result.get("command", "") or "").strip()
+
+    pool = stderr or stdout
+    if not pool:
+        return (f"bash command failed: {cmd}").strip()
+
+    # Prefer lines that look like explicit failures.
+    candidates = [
+        line.strip()
+        for line in pool.splitlines()
+        if line.strip() and any(tok in line.lower() for tok in ("error", "failed", "exception", "traceback", "no such"))
+    ]
+    core = " | ".join(candidates[:3]) if candidates else pool.splitlines()[-1].strip()
+
+    if cmd:
+        return f"{core} (while running: {cmd})"
+    return core
 
 
 # ── Tool registry ─────────────────────────────────────────────────────────────
@@ -83,12 +105,12 @@ def _build_registry(workspace: str) -> tuple[list[dict], dict]:
         dispatch["run_terminal"] = _bash_with_cwd
 
     try:
-        from web_surfer import TOOL_DEFINITIONS as WEB_DEFS, TOOL_FUNCTIONS as WEB_FNS
+        from web_navigator import TOOL_DEFINITIONS as WEB_DEFS, TOOL_FUNCTIONS as WEB_FNS
         all_defs += WEB_DEFS
         dispatch.update(WEB_FNS)
-        _log("Web surfer loaded")
+        _log("Web navigator loaded")
     except ImportError:
-        _log("Web surfer skipped (pip install ddgs trafilatura)")
+        _log("Web navigator skipped (pip install duckduckgo-search trafilatura)")
 
     return all_defs, dispatch
 
@@ -106,20 +128,25 @@ Rules:
 2. Use read_file before editing ANY file — never guess current content.
 3. Use fast_apply_diff for targeted edits; read_file first for context.
 4. After editing, use run_terminal to compile/test and verify correctness.
-5. Use search_web + read_url when you need documentation.
+5. Use research_web for deep documentation lookup.
 6. Use mutate_ui to adapt the IDE layout to the task.
 7. When done, issue a final natural-language summary — NO more tool calls.
 8. When given a build error to fix: read the error carefully, identify the root
    cause, apply the minimal correct fix, then verify with run_terminal.
+9. If a bash/build error is unclear, you MUST use research_web on the exact
+   error message and base your fix on the fresh documentation retrieved.
 """
 
 _SELF_HEAL_INJECTION = """\
 
 ⚠️  SELF-HEAL MODE ACTIVE — Build failure detected.
 You are now running on GPT-5.5 (god-tier reasoning).
-Analyse the error above, identify the root cause, apply the fix using
-fast_apply_diff, then re-run the build with run_terminal to verify.
-Do not ask the user for permission. Fix it autonomously.
+Policy:
+1) Use the injected web research context to ground your diagnosis.
+2) If uncertainty remains, call research_web yourself with the exact error string.
+3) Identify root cause, apply the minimal fix via fast_apply_diff, and re-run
+   run_terminal to verify.
+4) Do not ask the user for permission. Fix autonomously.
 """
 
 
@@ -144,6 +171,7 @@ def run(
     iterations = 0
     escalate_next = False          # True when previous tool call was a build error
     self_heal_count = 0
+    pending_error_query: str | None = None
 
     _log(f"Starting ReAct loop. Force preset: {force_preset or 'auto'} | "
          f"Max iterations: {max_iterations} | Tools: {list(dispatch.keys())}")
@@ -157,6 +185,29 @@ def run(
         effective_force: str | None = force_preset
         if escalate_next:
             effective_force = "GPT_5_5_ULTRA"
+
+            # Autonomous documentation grounding before the repair turn.
+            if pending_error_query and "research_web" in dispatch:
+                _log(f"SELF-HEAL web research: {pending_error_query[:160]}")
+                try:
+                    web_result = dispatch["research_web"]({
+                        "query": pending_error_query,
+                        "top_k": 3,
+                        "search_results": 8,
+                    })
+                except Exception as e:
+                    web_result = {"ok": False, "error": f"research_web raised: {e}"}
+
+                tools_called.append("research_web(auto)")
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "Fresh web research for the failing command is available below. "
+                        "Use it to fix the build with current docs:\n"
+                        + json.dumps(web_result, ensure_ascii=False)[:20_000]
+                    ),
+                })
+
             # Inject self-heal context as a system message so GPT-5.5 knows its role
             messages.append({
                 "role": "system",
@@ -234,7 +285,10 @@ def run(
             # Self-heal trigger: build failure from terminal
             if name == "run_terminal" and _is_build_error(result):
                 escalate_next = True
+                pending_error_query = _extract_error_query(result)
                 _log("BUILD ERROR detected — next turn escalates to GPT_5_5_ULTRA")
+            elif name == "run_terminal":
+                pending_error_query = None
 
             messages.append({
                 "role": "tool",

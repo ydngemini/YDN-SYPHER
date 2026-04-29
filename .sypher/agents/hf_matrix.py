@@ -17,7 +17,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 from pathlib import Path
 from typing import Any
 
@@ -135,6 +138,126 @@ def _extract_routing_text(messages: list[dict[str, Any]]) -> tuple[str, bool]:
     return "", False
 
 
+_HF_MODEL_RE = re.compile(
+    r"\b(?:huggingface/)?([A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*)\b"
+)
+
+
+def _normalize_hf_model_id(model_id: str) -> str:
+    model_id = model_id.strip()
+    if model_id.startswith("huggingface/"):
+        return model_id.split("/", 1)[1]
+    return model_id
+
+
+def _known_hf_models(config: dict[str, Any]) -> set[str]:
+    known: set[str] = set()
+    for p in config.get("presets", {}).values():
+        model = str(p.get("model", ""))
+        if not model:
+            continue
+        if model.startswith("huggingface/"):
+            known.add(_normalize_hf_model_id(model))
+    return known
+
+
+def _extract_hf_model_candidate(text: str, config: dict[str, Any]) -> str | None:
+    known = _known_hf_models(config)
+    for match in _HF_MODEL_RE.findall(text):
+        candidate = _normalize_hf_model_id(match)
+        if candidate and candidate not in known:
+            return candidate
+    return None
+
+
+def _fetch_hf_hub_model_info(model_id: str, token: str | None) -> dict[str, Any] | None:
+    endpoint = f"https://huggingface.co/api/models/{model_id}"
+    headers = {"Accept": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    try:
+        req = Request(endpoint, headers=headers)
+        with urlopen(req, timeout=8) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except (HTTPError, URLError, TimeoutError, ValueError):
+        return None
+
+
+def _infer_dynamic_tuning(model_info: dict[str, Any]) -> tuple[float, int]:
+    task = str(model_info.get("pipeline_tag", "") or "").lower()
+    tags = [str(t).lower() for t in model_info.get("tags", [])]
+
+    if task in {"text-generation", "text2text-generation", "chat-completion"}:
+        if any("instruct" in t or "chat" in t for t in tags):
+            return 0.25, 2048
+        return 0.35, 1536
+
+    if task in {"summarization", "translation", "feature-extraction", "fill-mask"}:
+        return 0.2, 1024
+
+    return 0.3, 1536
+
+
+def _build_dynamic_hf_preset(
+    model_id: str,
+    config: dict[str, Any],
+    model_info: dict[str, Any],
+) -> dict[str, Any] | None:
+    provider = config.get("providers", {}).get("huggingface", {})
+    api_base = provider.get("api_base", "https://api-inference.huggingface.co/v1")
+    api_key_env = provider.get("api_key_env", "HF_TOKEN")
+
+    if not api_base:
+        return None
+
+    temperature, max_tokens = _infer_dynamic_tuning(model_info)
+    pipeline_tag = str(model_info.get("pipeline_tag", "") or "unknown")
+
+    return {
+        "name": f"HF_DYNAMIC::{model_id}",
+        "model": f"huggingface/{model_id}",
+        "api_base": api_base,
+        "api_key_env": api_key_env,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "tier": "fast",
+        "description": f"Dynamic HF route ({pipeline_tag})",
+    }
+
+
+def _dynamic_hf_route(
+    messages: list[dict[str, Any]],
+    config: dict[str, Any],
+) -> dict[str, Any] | None:
+    text, _ = _extract_routing_text(messages)
+    if not text:
+        return None
+
+    candidate = _extract_hf_model_candidate(text, config)
+    if not candidate:
+        return None
+
+    hf_token = os.environ.get(config.get("providers", {}).get("huggingface", {}).get("api_key_env", "HF_TOKEN"))
+    info = _fetch_hf_hub_model_info(candidate, hf_token)
+    if not info:
+        return None
+
+    preset = _build_dynamic_hf_preset(candidate, config, info)
+    if not preset:
+        return None
+
+    _write_ui_event({
+        "action": "chassis_notification",
+        "preset": preset["name"],
+        "mode": "fast_mode",
+        "forced": True,
+        "reason": "dynamic_hf_route",
+    })
+
+    return preset
+
+
 # ── Semantic auto-routing ─────────────────────────────────────────────────────
 
 def _auto_route(
@@ -245,7 +368,7 @@ def complete(
     if config is None:
         config = load_config()
 
-    # Priority: explicit preset dict > force_preset_name > auto_route > active_preset
+    # Priority: explicit preset dict > force_preset_name > dynamic_hf > auto_route > active_preset
     if preset is None:
         if force_preset_name is not None:
             preset = get_preset(config, force_preset_name)
@@ -257,7 +380,10 @@ def complete(
                 "forced": True,
                 "reason": "self_heal",
             })
-        elif auto_route:
+        else:
+            preset = _dynamic_hf_route(messages, config)
+
+        if preset is None and auto_route:
             preset = _auto_route(messages, config)
 
     if preset is None:
